@@ -1,62 +1,142 @@
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            Global Judicial Assembly Simulator
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            A platform for AI-driven cross-jurisdictional legal deliberation.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/cases"
-            rel="noopener noreferrer"
-          >
-            View Cases
+    <div className="container mx-auto px-4 py-12">
+      <section className="text-center py-16">
+        <h1 className="text-4xl md:text-5xl font-bold mb-6">
+          Global Judicial Assembly Simulator
+        </h1>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+          A cutting-edge platform for AI-driven cross-jurisdictional legal deliberation and analysis.
+        </p>
+        <div className="flex flex-wrap gap-4 justify-center">
+          <Link href="/cases">
+            <Button size="lg">Explore Cases</Button>
           </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/rag"
-            rel="noopener noreferrer"
-          >
-            RAG Search
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/collaborate"
-            rel="noopener noreferrer"
-          >
-            Collaborate
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/datasets"
-            rel="noopener noreferrer"
-          >
-            Datasets
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/visualize"
-            rel="noopener noreferrer"
-          >
-            Visualize
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="/about"
-            rel="noopener noreferrer"
-          >
-            Learn More
+          <Link href="/rag">
+            <Button size="lg" variant="secondary">RAG Search</Button>
           </Link>
         </div>
-      </main>
+      </section>
+
+      <section className="py-12">
+        <h2 className="text-2xl font-semibold mb-8">Key Features</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cross-Jurisdictional Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Compare legal principles across multiple jurisdictions with advanced AI analysis.
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>RAG Search</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Retrieve and generate legal insights from comprehensive case law databases.
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Collaborative Platform</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Work with legal experts worldwide on complex cross-border legal challenges.
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Data Visualization</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Visualize legal relationships and case law networks with interactive graphs.
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Constitutional Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Access and analyze constitutions from around the world.
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>AI-Powered Insights</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Get intelligent recommendations and analysis powered by advanced AI models.
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="py-12">
+        <h2 className="text-2xl font-semibold mb-8">Quick Actions</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Link href="/cases">
+            <Button className="w-full h-20" variant="outline">
+              <div className="flex flex-col items-center">
+                <span className="text-lg font-medium">View Cases</span>
+                <span className="text-sm text-muted-foreground">Explore legal cases</span>
+              </div>
+            </Button>
+          </Link>
+          <Link href="/rag">
+            <Button className="w-full h-20" variant="outline">
+              <div className="flex flex-col items-center">
+                <span className="text-lg font-medium">RAG Search</span>
+                <span className="text-sm text-muted-foreground">AI-powered search</span>
+              </div>
+            </Button>
+          </Link>
+          <Link href="/collaborate">
+            <Button className="w-full h-20" variant="outline">
+              <div className="flex flex-col items-center">
+                <span className="text-lg font-medium">Collaborate</span>
+                <span className="text-sm text-muted-foreground">Work with experts</span>
+              </div>
+            </Button>
+          </Link>
+        </div>
+      </section>
+
+      <section className="py-12 text-center">
+        <h2 className="text-2xl font-semibold mb-4">Ready to get started?</h2>
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          Join legal professionals worldwide using GJAS for advanced cross-jurisdictional analysis.
+        </p>
+        <div className="flex gap-4 justify-center">
+          <Link href="/login">
+            <Button>Sign In</Button>
+          </Link>
+          <Link href="/about">
+            <Button variant="secondary">Learn More</Button>
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
