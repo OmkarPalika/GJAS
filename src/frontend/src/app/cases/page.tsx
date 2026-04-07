@@ -70,7 +70,6 @@ export default function CasesPage() {
     if (filterRegion !== 'all' && constitution.region !== filterRegion) {
       return false;
     }
-
     // Apply year filter
     if (filterYear !== 'all') {
       if (filterYear === 'recent' && constitution.year && constitution.year < 2000) {
@@ -80,7 +79,6 @@ export default function CasesPage() {
         return false;
       }
     }
-
     return true;
   });
 
