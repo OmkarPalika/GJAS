@@ -2,8 +2,13 @@
 
 import { useState, useEffect } from 'react';
 
+interface Constitution {
+  country: string;
+  // Add other properties as needed
+}
+
 export default function CasesPage() {
-  const [constitutions, setConstitutions] = useState([]);
+  const [constitutions, setConstitutions] = useState<Constitution[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 

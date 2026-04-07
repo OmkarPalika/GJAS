@@ -2,8 +2,14 @@
 
 import { useState, useEffect } from 'react';
 
+interface Constitution {
+  country: string;
+  text: string;
+  // Add other properties as needed
+}
+
 export default function ConstitutionPage({ params }: { params: Promise<{ country: string }> }) {
-  const [constitution, setConstitution] = useState(null);
+  const [constitution, setConstitution] = useState<Constitution | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

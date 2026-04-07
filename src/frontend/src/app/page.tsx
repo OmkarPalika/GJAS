@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -13,27 +13,48 @@ export default function Home() {
           </p>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
+          <Link
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
             href="/cases"
             rel="noopener noreferrer"
           >
             View Cases
-          </a>
-          <a
+          </Link>
+          <Link
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
             href="/rag"
             rel="noopener noreferrer"
           >
             RAG Search
-          </a>
-          <a
+          </Link>
+          <Link
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="/collaborate"
+            rel="noopener noreferrer"
+          >
+            Collaborate
+          </Link>
+          <Link
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="/datasets"
+            rel="noopener noreferrer"
+          >
+            Datasets
+          </Link>
+          <Link
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="/visualize"
+            rel="noopener noreferrer"
+          >
+            Visualize
+          </Link>
+          <Link
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
             href="/about"
             rel="noopener noreferrer"
           >
             Learn More
-          </a>
+          </Link>
         </div>
       </main>
     </div>

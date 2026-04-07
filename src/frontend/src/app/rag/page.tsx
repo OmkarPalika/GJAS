@@ -1,14 +1,34 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
+import { RAGResponse, RAGSearchResult } from '@/types/api';
 
 export default function RAGPage() {
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [generatedResponse, setGeneratedResponse] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { user, logout, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const [query, setQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<RAGSearchResult[]>([]);
+  const [generatedResponse, setGeneratedResponse] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const handleSearch = async () => {
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth/login');
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  const handleSearch = async (): Promise<void> => {
     if (!query.trim()) return;
 
     setLoading(true);
@@ -17,13 +37,21 @@ export default function RAGPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user?.accessToken}`,
         },
         body: JSON.stringify({ query }),
       });
-      const data = await response.json();
-      setSearchResults(data);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Search failed');
+      }
+
+      const data: RAGResponse = await response.json();
+      setSearchResults(data.results || []);
     } catch (error) {
-      console.error('Error searching:', error);
+      const err = error as Error;
+      console.error('Error searching documents:', err.message);
     } finally {
       setLoading(false);
     }
@@ -50,9 +78,33 @@ export default function RAGPage() {
     }
   };
 
+  // Add user info section
+  const userInfo = user ? (
+    <div className="flex items-center justify-between w-full mb-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+          {user.name?.charAt(0).toUpperCase() || 'U'}
+        </div>
+        <div>
+          <div className="font-semibold text-black dark:text-white">{user.name || 'User'}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {user.role} • {user.expertise?.join(', ') || 'General'}
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={logout}
+        className="px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600"
+      >
+        Logout
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-16 px-16 bg-white dark:bg-black sm:items-start">
+        {userInfo}
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left w-full">
           <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
             RAG Search & Generate
