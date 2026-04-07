@@ -1,0 +1,134 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+.out/
+
+# Production build
+build/
+dist/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Log files
+*.log
+
+# Debug files
+*.debug
+
+# Test coverage
+coverage/
+
+# IDE specific files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js specific
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backend specific
+src/backend/node_modules/
+src/backend/.env
+
+# Frontend specific
+src/frontend/node_modules/
+src/frontend/.env*
+src/frontend/.next/
+
+# Test files
+test_*.js
+check_*.js
+
+# Data files that can be regenerated
+data/
+!data/court_hierarchies.json
+!data/vector_store.json
+
+# Documentation build files
+docs/build/
+docs/.vitepress/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Dependency directories
+pids/
+logs/
+
+# TypeScript cache
+tsconfig.tsbuildinfo
+
+# Local history for VS Code
+.history/
+
+# MacOS specific
+.AppleDouble
+.LSOverride
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Java specific
+*.class
+
+# C/C++ specific
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.so
+
+# Ruby specific
+*.gem
+*.rbc
+
+# PHP specific
+*.phar
+
+# Composer specific
+vendor/
+composer.lock
+
+# Rust specific
+target/
+
+# Go specific
+go.mod
+go.sum
+
+# Docker specific
+.dockerignore
+
+# VS Code specific
+.vscode-test/
