@@ -2,6 +2,18 @@ import express from 'express';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
 import fs from 'fs';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
+import NodeCache from 'node-cache';
+
+// Initialize query cache with 5-minute TTL
+const nodeCache = new NodeCache({ stdTTL: 300, checkperiod: 600 });
+
+// Rate limiting for API endpoints
+const ragLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each IP to 50 requests per windowMs
+  message: 'Too many requests from this IP, please try again later'
+});
 
 // Simple cosine similarity function
 function cosineSimilarity(vecA, vecB) {
@@ -37,16 +49,69 @@ function loadCourtHierarchies() {
   }
 }
 
-// Get court weight for a country
-function getCourtWeight(countryName) {
+// Enhanced court weight calculation with legal system and cross-jurisdictional factors
+function getCourtWeight(countryName, legalSystem = null) {
   const hierarchies = loadCourtHierarchies();
   const hierarchy = hierarchies.find(h => h.country === countryName);
-  if (hierarchy && hierarchy.courts.length > 0) {
-    // Return the highest court weight (level 1)
-    const highestCourt = hierarchy.courts.find(c => c.level === 1);
-    return highestCourt ? highestCourt.weight : 1;
+  
+  if (!hierarchy || hierarchy.courts.length === 0) {
+    return 1; // Default weight
   }
-  return 1; // Default weight
+  
+  // Get highest court weight
+  const highestCourt = hierarchy.courts.find(c => c.level === 1);
+  let baseWeight = highestCourt ? highestCourt.weight : 1;
+  
+  // Legal system weighting (common law gets slight boost for precedent-based systems)
+  const systemWeight = legalSystem === 'common_law' ? 1.1 : 
+                      legalSystem === 'civil_law' ? 1.0 : 
+                      legalSystem === 'islamic_law' ? 1.2 : 
+                      1.0;
+  
+  // Cross-jurisdictional authority factor
+  const crossJurisdictionalFactor = hierarchy.courts.some(c => c.level === 1 && 
+    c.name.toLowerCase().includes('supreme') || 
+    c.name.toLowerCase().includes('constitutional')) ? 1.15 : 1.0;
+  
+  // Historical precedent factor (older constitutions get slight authority boost)
+  const yearMatch = countryName.match(/\d{4}/);
+  const constitutionYear = yearMatch ? parseInt(yearMatch[0]) : 1990;
+  const historicalFactor = Math.min(1.2, 1.0 + (2024 - constitutionYear) * 0.001);
+  
+  return baseWeight * systemWeight * crossJurisdictionalFactor * historicalFactor;
+}
+
+// Advanced bias mitigation with multi-perspective analysis
+function createBiasMitigationPrompt(query, results) {
+  const legalSystems = [...new Set(results.map(r => r.metadata.legal_system))];
+  const countries = results.map(r => r.metadata.country);
+  
+  const systemDescriptions = {
+    'common_law': 'Common law systems emphasize judicial precedent and case law',
+    'civil_law': 'Civil law systems rely on codified statutes and comprehensive legal codes',
+    'islamic_law': 'Islamic law systems are based on Sharia principles and religious texts',
+    'mixed': 'Mixed systems combine elements from multiple legal traditions'
+  };
+  
+  const perspectives = legalSystems.map(system => {
+    return `\n${systemDescriptions[system] || 'Unknown legal system'}: Consider how this perspective would interpret the query.`;
+  }).join('');
+  
+  return `Analyze the following legal question from multiple jurisdictional perspectives:
+
+Question: ${query}
+
+Relevant constitutional provisions found in: ${countries.join(', ')}
+
+Perspectives to consider:${perspectives}
+
+Provide a balanced analysis that:
+1. Identifies potential biases in interpretation
+2. Highlights differences between legal traditions
+3. Suggests a harmonized approach respecting all perspectives
+4. Flags any provisions that might conflict across jurisdictions
+
+Response:`;
 }
 
 // Apply weighted voting to results
@@ -67,30 +132,7 @@ function applyWeightedVoting(results) {
 const router = express.Router();
 const VECTOR_STORE_PATH = path.join(process.cwd(), '..', 'data', 'vector_store.json');
 
-// Simple in-memory cache for frequent queries
-const queryCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Cache management function
-function getFromCache(query) {
-  const cached = queryCache.get(query);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-  return null;
-}
-
-function setInCache(query, data) {
-  queryCache.set(query, {
-    data,
-    timestamp: Date.now()
-  });
-  // Limit cache size
-  if (queryCache.size > 100) {
-    const oldestKey = queryCache.keys().next().value;
-    queryCache.delete(oldestKey);
-  }
-}
 
 // Load the vector store
 function loadVectorStore() {
@@ -108,19 +150,24 @@ router.get('/test', (req, res) => {
   res.json({ status: 'RAG router is loaded' });
 });
 
-// Search for relevant documents
-router.post('/search', async (req, res) => {
+// Enhanced search with advanced features
+router.post('/search', ragLimiter, async (req, res) => {
   try {
     const { query } = req.body;
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    // Check cache first
-    const cachedResults = getFromCache(query);
+    // Check enhanced cache first
+    const cacheKey = `search:${query}`;
+    const cachedResults = nodeCache.get(cacheKey);
     if (cachedResults) {
       console.log('Cache hit for query:', query);
-      return res.json(cachedResults);
+      return res.json({
+        results: cachedResults,
+        cached: true,
+        cacheInfo: 'Results served from cache'
+      });
     }
 
     // Load the vector store
@@ -133,27 +180,47 @@ router.post('/search', async (req, res) => {
     const embeddings = new MistralAIEmbeddings();
     const queryEmbedding = await embeddings.embedQuery(query);
 
-    // Calculate cosine similarity between query and each document
+    // Calculate cosine similarity with enhanced metadata
     const results = vectorStore.map(item => {
       const similarity = cosineSimilarity(queryEmbedding, item.embedding);
-      console.log('Similarity:', similarity); // Debug log
+      const courtWeight = getCourtWeight(item.metadata.country, item.metadata.legal_system);
+      
       return {
         ...item,
-        similarity: similarity
+        similarity: similarity,
+        courtWeight: courtWeight,
+        legalSystem: item.metadata.legal_system
       };
     });
 
-    // Apply weighted voting based on court hierarchy
+    // Apply enhanced weighted voting
     const weightedResults = applyWeightedVoting(results);
-    console.log('Weighted results:', weightedResults); // Debug log
-
-    // Return top 5 results (now weighted)
-    const topResults = weightedResults.slice(0, 5);
-
-    // Cache the results
-    setInCache(query, topResults);
     
-    res.json(topResults);
+    // Calculate source diversity score
+    const legalSystems = [...new Set(weightedResults.map(r => r.legalSystem))];
+    const diversityScore = Math.min(1.0, legalSystems.length / 4); // Normalized to 0-1
+    
+    // Return top 5 results with enhanced metadata
+    const topResults = weightedResults.slice(0, 5);
+    
+    // Create bias mitigation prompt for frontend
+    const biasMitigationPrompt = createBiasMitigationPrompt(query, topResults);
+    
+    // Cache the enhanced results
+    nodeCache.set(cacheKey, topResults);
+    
+    res.json({
+      results: topResults,
+      cached: false,
+      diversityScore: diversityScore,
+      legalSystemsRepresented: legalSystems,
+      biasMitigationPrompt: biasMitigationPrompt,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        resultsCount: topResults.length,
+        queryLength: query.length
+      }
+    });
   } catch (error) {
     console.error('Error searching documents:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -188,6 +255,127 @@ router.get('/court-hierarchy/:country', (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Advanced multi-perspective analysis endpoint
+router.post('/analyze', ragLimiter, async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+
+    // Get search results first
+    const searchResponse = await fetch('http://localhost:3001/rag/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    
+    const searchData = await searchResponse.json();
+    
+    if (!searchData.results || searchData.results.length === 0) {
+      return res.json({
+        analysis: 'No relevant constitutional provisions found for this query.',
+        perspectives: [],
+        recommendations: []
+      });
+    }
+    
+    // Create detailed multi-perspective analysis
+    const legalSystems = searchData.legalSystemsRepresented || [];
+    const results = searchData.results || [];
+    
+    const perspectiveAnalysis = legalSystems.map(system => {
+      const systemResults = results.filter(r => r.legalSystem === system);
+      const systemTexts = systemResults.map(r => r.text).join('\n\n');
+      
+      return {
+        legalSystem: system,
+        relevantProvisions: systemResults.length,
+        keyFindings: systemResults.map(r => ({
+          country: r.metadata.country,
+          courtWeight: r.courtWeight,
+          similarity: r.similarity,
+          textPreview: r.text.substring(0, 200) + '...'
+        })),
+        interpretation: getSystemInterpretation(system, query, systemTexts)
+      };
+    });
+    
+    // Generate recommendations
+    const recommendations = generateRecommendations(perspectiveAnalysis, query);
+    
+    res.json({
+      query: query,
+      analysisTimestamp: new Date().toISOString(),
+      perspectives: perspectiveAnalysis,
+      diversityScore: searchData.diversityScore,
+      recommendations: recommendations,
+      metadata: {
+        constitutionsAnalyzed: results.length,
+        legalSystemsCovered: legalSystems.length,
+        cacheStatus: searchData.cached ? 'cached' : 'fresh'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error in advanced analysis:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Helper function for system-specific interpretation
+function getSystemInterpretation(system, query, texts) {
+  const interpretations = {
+    'common_law': `In common law systems, this query would be analyzed through the lens of judicial precedent. Courts would examine past rulings on similar matters and apply established legal principles. The focus would be on how this query fits within the existing body of case law.`,
+    'civil_law': `In civil law systems, this query would be evaluated based on codified statutes and constitutional provisions. The analysis would focus on the literal text of the law and its systematic interpretation within the legal code.`,
+    'islamic_law': `In Islamic law systems, this query would be considered in light of Sharia principles and religious texts. The interpretation would emphasize compliance with Islamic jurisprudence and the teachings of the Quran and Hadith.`,
+    'mixed': `In mixed legal systems, this query would be analyzed using a combination of approaches. The interpretation would blend elements of common law precedent, civil law codification, and potentially religious or customary law principles.`
+  };
+  
+  return interpretations[system] || 'This legal system requires specialized analysis that combines multiple interpretive approaches.';
+}
+
+// Generate recommendations based on multi-perspective analysis
+function generateRecommendations(perspectives, query) {
+  const recommendations = [];
+  
+  // Check for consensus
+  const hasConsensus = perspectives.every(p => p.keyFindings.length > 0);
+  if (hasConsensus) {
+    recommendations.push({
+      type: 'consensus',
+      message: 'There appears to be consensus across legal systems on this issue.',
+      confidence: 'high'
+    });
+  } else {
+    recommendations.push({
+      type: 'divergence',
+      message: 'Different legal systems may interpret this query differently.',
+      confidence: 'medium'
+    });
+  }
+  
+  // Check diversity
+  if (perspectives.length >= 3) {
+    recommendations.push({
+      type: 'diversity',
+      message: 'This analysis benefits from input across multiple legal traditions.',
+      confidence: 'high'
+    });
+  }
+  
+  // Query-specific recommendations
+  if (query.length > 100) {
+    recommendations.push({
+      type: 'complexity',
+      message: 'For complex queries, consider breaking down into smaller, more focused questions.',
+      confidence: 'medium'
+    });
+  }
+  
+  return recommendations;
+}
 
 // Generate response using Mistral API
 router.post('/generate', async (req, res) => {
