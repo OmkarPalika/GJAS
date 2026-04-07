@@ -34,15 +34,24 @@ const authOptions: NextAuthOptions = {
       async authorize(credentials): Promise<User | null> {
         try {
           // Call backend auth endpoint
-          const res = await fetch('http://localhost:5000/api/auth/login', {
+          const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+          const res = await fetch(`${backendUrl}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(credentials)
+            body: JSON.stringify(credentials),
+            // Add timeout to prevent hanging
+            signal: AbortSignal.timeout(10000)
           });
           
           if (!res.ok) {
-            const error = await res.json() as { error?: string };
-            throw new Error(error.error || 'Login failed');
+            try {
+              const error = await res.json() as { error?: string };
+              throw new Error(error.error || 'Login failed');
+            } catch (jsonError) {
+              // If response is not JSON (e.g., HTML error page)
+              const text = await res.text();
+              throw new Error(text || 'Login failed - invalid server response');
+            }
           }
           
           const data = await res.json() as AuthResponse;
@@ -63,7 +72,19 @@ const authOptions: NextAuthOptions = {
           
           return null;
         } catch (error) {
-          console.error('Authorization error:', error);
+          if (error instanceof Error) {
+            if (error.name === 'AbortError') {
+              console.error('Backend request timed out:', error.message);
+              throw new Error('Backend server is not responding. Please try again later.');
+            } else if (error.message.includes('failed to fetch')) {
+              console.error('Network error:', error.message);
+              throw new Error('Unable to connect to the authentication server. Please check your network connection.');
+            } else {
+              console.error('Authorization error:', error.message);
+            }
+          } else {
+            console.error('Unexpected authorization error:', error);
+          }
           return null;
         }
       }
@@ -104,5 +125,6 @@ const authOptions: NextAuthOptions = {
   }
 };
 
-export { handler as GET, handler as POST };
 const handler = NextAuth(authOptions);
+
+export { handler as GET, handler as POST };

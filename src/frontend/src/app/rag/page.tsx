@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { RAGResponse, RAGSearchResult } from '@/types/api';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function RAGPage() {
   const { user, logout, loading: authLoading } = useAuth();
@@ -12,6 +18,8 @@ export default function RAGPage() {
   const [searchResults, setSearchResults] = useState<RAGSearchResult[]>([]);
   const [generatedResponse, setGeneratedResponse] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('search');
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -23,7 +31,7 @@ export default function RAGPage() {
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -32,6 +40,8 @@ export default function RAGPage() {
     if (!query.trim()) return;
 
     setLoading(true);
+    setError(null);
+    setActiveTab('search');
     try {
       const response = await fetch('http://localhost:5000/api/rag/search', {
         method: 'POST',
@@ -52,6 +62,7 @@ export default function RAGPage() {
     } catch (error) {
       const err = error as Error;
       console.error('Error searching documents:', err.message);
+      setError(err.message || 'Search failed');
     } finally {
       setLoading(false);
     }
@@ -61,6 +72,8 @@ export default function RAGPage() {
     if (!query.trim()) return;
 
     setLoading(true);
+    setError(null);
+    setActiveTab('generate');
     try {
       const response = await fetch('http://localhost:5000/api/rag/generate', {
         method: 'POST',
@@ -72,94 +85,186 @@ export default function RAGPage() {
       const data = await response.json();
       setGeneratedResponse(data.response);
     } catch (error) {
-      console.error('Error generating response:', error);
+      const err = error as Error;
+      console.error('Error generating response:', err.message);
+      setError(err.message || 'Generation failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // Add user info section
-  const userInfo = user ? (
-    <div className="flex items-center justify-between w-full mb-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-          {user.name?.charAt(0).toUpperCase() || 'U'}
-        </div>
-        <div>
-          <div className="font-semibold text-black dark:text-white">{user.name || 'User'}</div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            {user.role} • {user.expertise?.join(', ') || 'General'}
-          </div>
-        </div>
-      </div>
-      <button
-        onClick={logout}
-        className="px-3 py-1 bg-red-500 text-white text-sm rounded-md hover:bg-red-600"
-      >
-        Logout
-      </button>
-    </div>
-  ) : null;
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && query.trim()) {
+      handleSearch();
+    }
+  };
 
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-16 px-16 bg-white dark:bg-black sm:items-start">
-        {userInfo}
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left w-full">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            RAG Search & Generate
-          </h1>
-          <div className="w-full flex gap-2">
-            <input
-              type="text"
-              placeholder="Enter your query..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 p-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:text-white"
-            />
-            <button
-              onClick={handleSearch}
-              className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-              disabled={loading}
-            >
-              {loading ? 'Searching...' : 'Search'}
-            </button>
-            <button
-              onClick={handleGenerate}
-              className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600"
-              disabled={loading}
-            >
-              {loading ? 'Generating...' : 'Generate'}
-            </button>
-          </div>
-          {searchResults.length > 0 && (
-            <div className="w-full max-h-96 overflow-y-auto text-left mt-4">
-              <h2 className="text-xl font-semibold text-black dark:text-zinc-50">Search Results:</h2>
-              {searchResults.map((result, index) => (
-                <div key={index} className="p-4 mb-4 border border-gray-200 rounded-md dark:border-gray-700">
-                  <h3 className="font-medium text-black dark:text-zinc-50">
-                    {result.metadata.country} ({result.metadata.fileName})
-                  </h3>
-                  <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-                    {result.text.substring(0, 200)}...
-                  </p>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-2">
-                    Similarity: {result.similarity ? result.similarity.toFixed(4) : 'N/A'}
-                  </p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex flex-col gap-6">
+        {/* User Info Section */}
+        {user && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Avatar>
+                  <AvatarFallback>{user.name?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <CardTitle>{user.name || 'User'}</CardTitle>
+                  <CardDescription>
+                    {user.role} • {user.expertise?.join(', ') || 'General'}
+                  </CardDescription>
                 </div>
-              ))}
+              </div>
+              <Button variant="destructive" size="sm" onClick={logout}>
+                Logout
+              </Button>
+            </CardHeader>
+          </Card>
+        )}
+
+        {/* Main Content */}
+        <Card>
+          <CardHeader>
+            <CardTitle>RAG Search & Generate</CardTitle>
+            <CardDescription>
+              Search legal documents and generate AI-powered responses
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="Enter your legal query..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  disabled={loading}
+                />
+                <Button onClick={handleSearch} disabled={loading || !query.trim()}>
+                  {loading ? 'Searching...' : 'Search'}
+                </Button>
+                <Button onClick={handleGenerate} disabled={loading || !query.trim()} variant="secondary">
+                  {loading ? 'Generating...' : 'Generate'}
+                </Button>
+              </div>
+
+              {error && (
+                <div className="bg-destructive/15 border border-destructive rounded-md p-4">
+                  <p className="text-destructive">{error}</p>
+                </div>
+              )}
+
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+                <TabsList>
+                  <TabsTrigger value="search">Search Results</TabsTrigger>
+                  <TabsTrigger value="generate">Generated Response</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="search">
+                  {loading && activeTab === 'search' ? (
+                    <div className="space-y-4 mt-4">
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <div className="space-y-4 mt-4">
+                      {searchResults.map((result, index) => (
+                        <Card key={index}>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-lg">
+                              {result.metadata.country} - {result.metadata.fileName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-muted-foreground mb-4">
+                              {result.text.substring(0, 300)}...
+                            </p>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">
+                                Similarity: {(result.similarity * 100).toFixed(2)}%
+                              </span>
+                              <Button variant="outline" size="sm">
+                                View Full Text
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No search results. Enter a query and click Search.
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="generate">
+                  {loading && activeTab === 'generate' ? (
+                    <div className="space-y-2 mt-4">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
+                    </div>
+                  ) : generatedResponse ? (
+                    <Card className="mt-4">
+                      <CardHeader>
+                        <CardTitle>AI-Generated Response</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <pre className="whitespace-pre-wrap text-muted-foreground">
+                          {generatedResponse}
+                        </pre>
+                        <Button variant="outline" size="sm" className="mt-4">
+                          Copy Response
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No generated response. Enter a query and click Generate.
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </div>
-          )}
-          {generatedResponse && (
-            <div className="w-full text-left mt-4">
-              <h2 className="text-xl font-semibold text-black dark:text-zinc-50">Generated Response:</h2>
-              <pre className="whitespace-pre-wrap p-4 border border-gray-200 rounded-md dark:border-gray-700 text-zinc-600 dark:text-zinc-400">
-                {generatedResponse}
-              </pre>
+          </CardContent>
+        </Card>
+
+        {/* Help Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>How to Use RAG Search</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium mb-2">Search</h4>
+                <p className="text-sm text-muted-foreground">
+                  Find relevant legal documents and case law from our comprehensive database.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">Generate</h4>
+                <p className="text-sm text-muted-foreground">
+                  Get AI-powered analysis and responses based on your query and retrieved documents.
+                </p>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">Examples</h4>
+                <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
+                  <li>"What are the key principles of freedom of speech in democratic constitutions?"</li>
+                  <li>"Compare judicial review processes in common law vs civil law systems"</li>
+                  <li>"Find cases related to digital privacy rights in the last decade"</li>
+                </ul>
+              </div>
             </div>
-          )}
-        </div>
-      </main>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
