@@ -1,4 +1,4 @@
-import { ApiResponse } from '../types/api';
+import { ApiResponse } from '@/types/api';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 

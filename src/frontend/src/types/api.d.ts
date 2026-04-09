@@ -88,6 +88,15 @@ export interface CollaborativeMessage {
   };
 }
 
+export interface DynamicEdgeCase {
+  nodeId: string;
+  type: string;
+  description: string;
+  resolved: boolean;
+  userInterventionText?: string;
+  timestamp: string;
+}
+
 export interface CollaborativeCase {
   _id: string;
   title: string;
@@ -98,4 +107,6 @@ export interface CollaborativeCase {
   legalSystem?: string;
   jurisdiction?: string;
   currentStep?: string;
+  edgeCaseLog?: DynamicEdgeCase[];
+  caseType?: string;
 }

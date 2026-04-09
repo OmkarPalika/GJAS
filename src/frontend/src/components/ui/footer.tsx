@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function Footer() {
   return (
     <footer className="border-t py-6">
@@ -7,15 +9,15 @@ export function Footer() {
             © {new Date().getFullYear()} Global Judicial Assembly Simulator. All rights reserved.
           </div>
           <div className="flex items-center space-x-6 mt-4 md:mt-0">
-            <a href="#" className="text-sm hover:text-primary transition-colors">
+            <Link href="#" className="text-sm hover:text-primary transition-colors">
               Privacy Policy
-            </a>
-            <a href="#" className="text-sm hover:text-primary transition-colors">
+            </Link>
+            <Link href="#" className="text-sm hover:text-primary transition-colors">
               Terms of Service
-            </a>
-            <a href="#" className="text-sm hover:text-primary transition-colors">
+            </Link>
+            <Link href="#" className="text-sm hover:text-primary transition-colors">
               Contact
-            </a>
+            </Link>
           </div>
         </div>
       </div>

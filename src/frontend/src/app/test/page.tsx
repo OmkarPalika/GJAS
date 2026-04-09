@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function TestPage() {
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
@@ -51,7 +51,7 @@ export default function TestPage() {
             </div>
           )}
 
-          {testResult && (
+          {testResult !== null && (
             <div className="bg-muted rounded-md p-4">
               <pre className="text-sm overflow-x-auto">
                 {JSON.stringify(testResult, null, 2)}

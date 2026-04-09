@@ -1,7 +1,8 @@
 export interface NetworkNode {
   id: string;
-  type: 'constitution' | 'case_law' | 'treaty' | 'court';
+  type: 'constitution' | 'case_law' | 'treaty' | 'court' | 'case_summary' | 'legal_phase';
   description?: string;
+  status?: string;
   x?: number;
   y?: number;
   fx?: number | null;

@@ -45,7 +45,7 @@ const LegalSystemBarChart = ({ data, width = 800, height = 500 }: LegalSystemBar
         .padding(0.2);
 
       const yScale = d3.scaleLinear()
-        .domain([0, (d3.max(data, (d: any) => d.count) as number) * 1.1])
+        .domain([0, (d3.max(data, d => d.count) as number) * 1.1])
         .range([chartHeight, 0]);
 
       // Add X axis
@@ -74,10 +74,10 @@ const LegalSystemBarChart = ({ data, width = 800, height = 500 }: LegalSystemBar
         .enter()
         .append('rect')
         .attr('class', 'bar')
-        .attr('x', (d: any) => xScale(d.legalSystem) || 0)
-        .attr('y', (d: any) => yScale(d.count) || 0)
+        .attr('x', d => xScale(d.legalSystem) || 0)
+        .attr('y', d => yScale(d.count) || 0)
         .attr('width', xScale.bandwidth())
-        .attr('height', (d: any) => chartHeight - (yScale(d.count) || 0))
+        .attr('height', d => chartHeight - (yScale(d.count) || 0))
         .attr('fill', '#4F46E5')
         .attr('rx', 4)
         .attr('ry', 4)
@@ -106,13 +106,13 @@ const LegalSystemBarChart = ({ data, width = 800, height = 500 }: LegalSystemBar
         .enter()
         .append('text')
         .attr('class', 'label')
-        .attr('x', (d: any) => (xScale(d.legalSystem) || 0) + (xScale.bandwidth() / 2))
-        .attr('y', (d: any) => (yScale(d.count) || 0) - 5)
+        .attr('x', d => (xScale(d.legalSystem) || 0) + (xScale.bandwidth() / 2))
+        .attr('y', d => (yScale(d.count) || 0) - 5)
         .attr('text-anchor', 'middle')
         .attr('font-size', '12px')
         .attr('font-weight', 'bold')
         .attr('fill', '#374151')
-        .text((d: any) => d.count);
+        .text(d => d.count);
 
       // Add chart title
       svg.append('text')
@@ -126,7 +126,7 @@ const LegalSystemBarChart = ({ data, width = 800, height = 500 }: LegalSystemBar
       // Add grid lines
       svg.append('g')
         .attr('class', 'grid')
-        .call((g: any) => g.call(d3.axisLeft(yScale).tickSize(-chartWidth)))
+        .call((g: d3.Selection<SVGGElement, unknown, null, undefined>) => g.call(d3.axisLeft(yScale).tickSize(-chartWidth)))
         .selectAll('line')
         .attr('stroke', '#E5E7EB')
         .attr('stroke-dasharray', '2,2');

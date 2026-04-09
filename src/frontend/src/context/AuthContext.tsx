@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { User, AuthContextType } from '../types/auth';
+import { User, AuthContextType } from '@/types/auth';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: nextAuthUser.email || '',
           role: (nextAuthUser.role as 'user' | 'expert' | 'admin' | undefined) || 'user',
           expertise: nextAuthUser.expertise || [],
-          accessToken: (session as any).accessToken || ''
+          accessToken: session.accessToken || ''
         };
         setUser(authUser);
       } else {

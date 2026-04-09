@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { VisualizationProps } from '../../types/visualization';
+import { VisualizationProps, NetworkNode, NetworkLink } from '@/types/visualization';
 
 interface LegalNetworkGraphProps extends VisualizationProps {
   width?: number;
   height?: number;
 }
 
-const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGraphProps) => {
+const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGraphProps): React.ReactElement | null => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,25 +34,25 @@ const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGrap
           .attr('viewBox', [0, 0, width, height]);
 
         // Create simulation
-        const simulation = d3.forceSimulation(data.nodes)
-          .force('link', d3.forceLink(data.links).id((d: any) => d.id).distance(100))
+        const simulation = d3.forceSimulation<NetworkNode>(data.nodes as NetworkNode[])
+          .force('link', d3.forceLink<NetworkNode, NetworkLink>(data.links as NetworkLink[]).id(d => d.id).distance(100))
           .force('charge', d3.forceManyBody().strength(-200))
           .force('center', d3.forceCenter(width / 2, height / 2))
           .force('collision', d3.forceCollide().radius(30));
 
         // Drag functions
-        const dragstarted = (event: any, d: any) => {
+        const dragstarted = (event: d3.D3DragEvent<SVGGElement, NetworkNode, NetworkNode>, d: NetworkNode) => {
           if (!event.active) simulation.alphaTarget(0.3).restart();
           d.fx = d.x;
           d.fy = d.y;
         };
 
-        const dragged = (event: any, d: any) => {
+        const dragged = (event: d3.D3DragEvent<SVGGElement, NetworkNode, NetworkNode>, d: NetworkNode) => {
           d.fx = event.x;
           d.fy = event.y;
         };
 
-        const dragended = (event: any, d: any) => {
+        const dragended = (event: d3.D3DragEvent<SVGGElement, NetworkNode, NetworkNode>, d: NetworkNode) => {
           if (!event.active) simulation.alphaTarget(0);
           d.fx = null;
           d.fy = null;
@@ -61,7 +61,7 @@ const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGrap
         // Add links
         const link = svg.append('g')
           .selectAll('line')
-          .data(data.links)
+          .data(data.links as NetworkLink[])
           .enter().append('line')
           .attr('stroke', '#999')
           .attr('stroke-opacity', 0.6)
@@ -70,9 +70,9 @@ const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGrap
         // Add nodes
         const node = svg.append('g')
           .selectAll('g')
-          .data(data.nodes)
+          .data(data.nodes as NetworkNode[])
           .enter().append('g')
-          .call((d3.drag() as any)
+          .call(d3.drag<SVGGElement, NetworkNode>()
             .on('start', dragstarted)
             .on('drag', dragged)
             .on('end', dragended));
@@ -80,14 +80,21 @@ const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGrap
         // Node circles
         node.append('circle')
           .attr('r', 10)
-          .attr('fill', d => {
-            const colors = {
+          .attr('fill', (d) => {
+            const colors: Record<string, string> = {
               'constitution': '#4F46E5',
               'case_law': '#10B981',
               'treaty': '#F59E0B',
-              'court': '#EF4444',
+              'court': '#8B5CF6',
+              'case_summary': '#EC4899',
+              'legal_phase': '#3B82F6',
               'default': '#6B7280'
             };
+            // Status-based overrides
+            if (d.status === 'edge_case') return '#EF4444'; // Bright Red for stalled
+            if (d.status === 'deliberating') return '#F59E0B'; // Amber for active
+            if (d.status === 'complete') return '#10B981'; // Green for finished
+            
             return colors[d.type] || colors.default;
           })
           .attr('stroke', '#fff')
@@ -107,22 +114,22 @@ const LegalNetworkGraph = ({ data, width = 800, height = 600 }: LegalNetworkGrap
 
         // Simulation events
         simulation.on('tick', () => {
-          (link as any)
-            .attr('x1', (d: any) => d.source.x)
-            .attr('y1', (d: any) => d.source.y)
-            .attr('x2', (d: any) => d.target.x)
-            .attr('y2', (d: any) => d.target.y);
+          link
+            .attr('x1', (d) => (d.source as NetworkNode).x || 0)
+            .attr('y1', (d) => (d.source as NetworkNode).y || 0)
+            .attr('x2', (d) => (d.target as NetworkNode).x || 0)
+            .attr('y2', (d) => (d.target as NetworkNode).y || 0);
 
-          (node as any)
-            .attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+          node
+            .attr('transform', (d) => `translate(${d.x || 0},${d.y || 0})`);
         });
 
         // Add legend
         const legendData = [
-          { type: 'constitution', color: '#4F46E5', label: 'Constitutions' },
-          { type: 'case_law', color: '#10B981', label: 'Case Law' },
-          { type: 'treaty', color: '#F59E0B', label: 'Treaties' },
-          { type: 'court', color: '#EF4444', label: 'Courts' }
+          { type: 'case_summary', color: '#EC4899', label: 'Simulations' },
+          { type: 'court', color: '#8B5CF6', label: 'Judicial Tracks' },
+          { type: 'legal_phase', color: '#3B82F6', label: 'Court Phases' },
+          { type: 'edge_case', color: '#EF4444', label: 'PAUSED (Edge Case)' }
         ];
 
         const legend = svg.append('g')

@@ -1,5 +1,6 @@
-import NextAuth, { NextAuthOptions } from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials';
+import NextAuth from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import type { NextAuthOptions } from 'next-auth';
 
 interface User {
   id: string;
@@ -25,7 +26,7 @@ interface AuthResponse {
 
 const authOptions: NextAuthOptions = {
   providers: [
-    CredentialsProvider({
+    Credentials({
       name: 'Credentials',
       credentials: {
         email: { label: "Email", type: "email" },
@@ -47,7 +48,7 @@ const authOptions: NextAuthOptions = {
             try {
               const error = await res.json() as { error?: string };
               throw new Error(error.error || 'Login failed');
-            } catch (jsonError) {
+            } catch {
               // If response is not JSON (e.g., HTML error page)
               const text = await res.text();
               throw new Error(text || 'Login failed - invalid server response');
@@ -91,25 +92,25 @@ const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async jwt({ token, user }: { token: any; user?: any }) {
+    async jwt({ token, user }) {
       if (user) {
+        const u = user as unknown as User;
         // Only set properties if they exist on the user object
-        if (user.id) token.id = user.id;
-        if (user.role) token.role = user.role;
-        if (user.expertise) token.expertise = user.expertise;
-        if (user.accessToken) token.accessToken = user.accessToken;
+        token.id = u.id;
+        token.role = u.role;
+        token.expertise = u.expertise;
+        token.accessToken = u.accessToken;
       }
       return token;
     },
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }) {
       // Ensure session.user exists and only set properties if they exist on the token
-      if (!session.user) {
-        session.user = { name: '', email: '', image: '' };
+      if (session.user) {
+        session.user.id = token.id;
+        session.user.role = token.role;
+        session.user.expertise = token.expertise;
+        session.accessToken = token.accessToken;
       }
-      if (token.id) session.user.id = token.id;
-      if (token.role) session.user.role = token.role;
-      if (token.expertise) session.user.expertise = token.expertise;
-      if (token.accessToken) session.accessToken = token.accessToken;
       return session;
     }
   },
@@ -128,3 +129,4 @@ const authOptions: NextAuthOptions = {
 const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
+export { authOptions };
