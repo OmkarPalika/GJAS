@@ -109,7 +109,7 @@ router.put('/:caseId', expertMiddleware, async (req: Request, res: Response) => 
     const caseLaw = await CaseLaw.findOneAndUpdate(
       { caseId: req.params.caseId },
       updates,
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!caseLaw) {

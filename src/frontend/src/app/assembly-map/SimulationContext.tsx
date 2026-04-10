@@ -2,7 +2,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { GLOBAL_COURT_REGISTRY, ALL_NATIONS } from '@/lib/court_registry';
+import { GLOBAL_COURT_REGISTRY, ALL_NATIONS, fetchRegistry } from '@/lib/court_registry';
+import { useSocket } from '@/context/SocketContext';
+import { applySimulationEvent, SimulationEvent, SimulationState } from '@/lib/simulation_sync';
 
 // ─── Type Definitions ─────────────────────────────────────────────────────────
 
@@ -56,6 +58,11 @@ export interface ICase {
     }>;
     edgeCaseLog: IEdgeCaseEvent[];
     globalAssembly?: IGlobalAssembly;
+    iccProceedings?: {
+        status: 'pending' | 'deliberating' | 'complete' | 'failed';
+        reasoning?: string;
+        verdict?: { decision: string; sentenceOrRemedy?: string };
+    };
     ombudsmanReports?: { nodeId: string; critique: string; severity: string; timestamp: string }[];
 }
 
@@ -171,6 +178,14 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
     const [isOrchestrating, setIsOrchestrating] = useState(false);
     const [orchestrationStartTime, setOrchestrationStartTime] = useState<number | null>(null);
     const [isResolving, setIsResolving] = useState(false);
+    const [registryLoaded, setRegistryLoaded] = useState(false);
+
+    // Fetch registry on mount
+    useEffect(() => {
+        fetchRegistry().then(() => {
+            setRegistryLoaded(true);
+        });
+    }, []);
     const [startError, setStartError] = useState<string | null>(null);
 
     // ── Briefing modal state ──
@@ -194,6 +209,7 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
     const [manualExpandedLevels, setManualExpandedLevels] = useState<string[]>([]);
     const [autoExpandedLevels, setAutoExpandedLevels] = useState<string[]>([]);
     const [currentTime, setCurrentTime] = useState(Date.now());
+    const { socket, connected } = useSocket();
 
     // ── Timers ──
     useEffect(() => {
@@ -231,11 +247,50 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
         return ((currentTime - new Date(liveCase.startedAt).getTime()) / 1000).toFixed(1) + 's';
     }, [isOrchestrating, orchestrationStartTime, liveCase?.startedAt, currentTime]);
 
-    // ── Polling ──
+    // ── WebSocket Simulation Sync ──
+    useEffect(() => {
+        if (!liveCaseId || !socket || !connected) return;
+
+        // Subscribe to this specific case room
+        socket.emit('join-case', liveCaseId);
+
+        const handleCaseUpdate = (data: Record<string, unknown> & { _id?: string, event?: string }) => {
+            console.log('[Map WS] Received update:', data);
+            
+            // If it's a full case object, replace everything
+            if (data._id && data.pipelines) {
+               const mappedData = { ...data, id: data._id };
+               setLiveCase(mappedData as unknown as ICase);
+               setIsOrchestrating(false);
+               return;
+            }
+
+            // Handle granular events
+            if (data.event) {
+                if (data.event === 'CASE_COMPLETE') {
+                    setIsSimulating(false);
+                    setIsOrchestrating(false);
+                }
+                
+                if (data.event === 'PHASE_TRANSITION' || data.event === 'GLOBAL_ASSEMBLY_START' || data.event === 'EXECUTIVE_REVIEW_START') {
+                    setIsOrchestrating(false);
+                }
+
+                setLiveCase(prev => applySimulationEvent(prev as unknown as SimulationState, data as unknown as SimulationEvent) as unknown as ICase);
+            }
+        };
+
+        socket.on('case-updated', handleCaseUpdate);
+
+        return () => {
+            socket.off('case-updated', handleCaseUpdate);
+        };
+    }, [liveCaseId, socket, connected]);
+
+    // Keep a very slow fallback poll (once every 10s) just in case socket drops
     useEffect(() => {
         if (!liveCaseId) return;
-        const timeout = setTimeout(() => setIsOrchestrating(false), 20000);
-        const poll = setInterval(async () => {
+        const fallback = setInterval(async () => {
             try {
                 const res = await fetch(`${API_URL}/live/${liveCaseId}`, {
                     cache: 'no-store',
@@ -243,17 +298,11 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setLiveCase(data);
-                    if (data?.pipelines) {
-                        const hasStarted = Object.values(data.pipelines).some((pl: unknown) =>
-                            Object.values((pl as { nodes: Record<string, INode> }).nodes).some(n => n.status !== 'dormant' && n.status !== 'pending')
-                        );
-                        if (hasStarted) setIsOrchestrating(false);
-                    }
+                    setLiveCase(() => ({ ...data, id: data.id } as ICase));
                 }
-            } catch { /* silently continue polling */ }
-        }, 1050);
-        return () => { clearInterval(poll); clearTimeout(timeout); };
+            } catch { /* ignore */ }
+        }, 10000);
+        return () => clearInterval(fallback);
     }, [liveCaseId, API_URL, session]);
 
     // ── Chat Bubble generator ──

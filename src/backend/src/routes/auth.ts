@@ -1,6 +1,7 @@
 import express, { Response } from 'express';
 import User from '@/models/User.js';
 import { authMiddleware, AuthRequest } from '@/middleware/auth.js';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -164,6 +165,71 @@ router.get('/users', authMiddleware, async (req: AuthRequest, res: Response) => 
     res.json(users);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Forgot Password - Generate token and log it (as discussed)
+router.post('/forgot-password', async (req: express.Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // For security, don't reveal if user exists. Return generic success.
+      return res.json({ message: 'If an account exists, a reset link has been generated.' });
+    }
+
+    // Generate token
+    const token = crypto.randomBytes(20).toString('hex');
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+    
+    await user.save();
+
+    console.log('\n=======================================');
+    console.log('PASSWORD RESET LINK GENERATED');
+    console.log(`User: ${user.email}`);
+    console.log(`Token: ${token}`);
+    console.log(`URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${token}`);
+    console.log('=======================================\n');
+
+    res.json({ message: 'If an account exists, a reset link has been generated.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset Password
+router.post('/reset-password/:token', async (req: express.Request, res: Response) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'New password is required' });
+
+    const user = await User.findOne({
+      resetPasswordToken: req.params.token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Password reset token is invalid or has expired.' });
+    }
+
+    // Update password
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    if (!user.hasStrongPassword()) {
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters with uppercase, lowercase, and number'
+      });
+    }
+
+    await user.save();
+    res.json({ message: 'Password has been reset successfully.' });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 

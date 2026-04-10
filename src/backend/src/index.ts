@@ -9,8 +9,8 @@ import ragRouter from './routes/rag.js';
 import authRouter from './routes/auth.js';
 import caseLawRouter from './routes/caseLaw.js';
 import treatiesRouter from './routes/treaties.js';
-import debateRouter from './routes/debate.js';
 import simulationRouter from './routes/simulation.js';
+import registryRouter from './routes/registry.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,28 +18,33 @@ const PORT = process.env.PORT || 5000;
 // Create HTTP server for WebSocket
 const httpServer = createServer(app);
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+}));
 app.use(express.json());
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/gjas')
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error('FATAL: MONGODB_URI is not defined in environment variables.');
+  process.exit(1);
+}
+
+mongoose.connect(MONGODB_URI)
 .then(() => {
   console.log('Connected to MongoDB');
   
   // Initialize WebSocket server after DB connection
-  const wsServer = new WebSocketServer(httpServer);
+  WebSocketServer.init(httpServer);
   console.log('WebSocket server initialized');
 }).catch((error) => {
   console.error('MongoDB connection error:', error);
 });
 
+// API health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy' });
-});
-
-// Simple test route
-app.get('/api/test', (req, res) => {
-  res.json({ status: 'Server is running' });
 });
 
 // API routes
@@ -48,13 +53,10 @@ app.use('/api/rag', ragRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/case-law', caseLawRouter);
 app.use('/api/treaties', treatiesRouter);
-app.use('/api/debate', debateRouter);
 app.use('/api/simulate', simulationRouter);
+app.use('/api/registry', registryRouter);
 
-// Test route to verify RAG router is loaded
-app.get('/api/rag/test', (req, res) => {
-  res.json({ status: 'RAG router is loaded' });
-});
+// Note: /api/rag/test is served by ragRouter directly
 
 // Use HTTP server instead of app.listen to support WebSocket
 httpServer.listen(PORT, () => {

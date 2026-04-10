@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -12,52 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const agents = [
-  {
-    id: "USA",
-    name: "US Supreme Court Model",
-    role: "Supreme Court",
-    weight: 3,
-    perspective: "Common Law (Precedent-Based)",
-    description: "Fine-tuned Legal-BERT model grounded in the US Constitution. Emphasizes 1st Amendment rights, historical precedent, and stare decisis.",
-    focusAreas: ["Constitutional History", "Appellate Review", "Free Speech"],
-    metrics: { cases: 142, similarity: 98, winRate: 54 },
-    theme: "primary"
-  },
-  {
-    id: "Germany",
-    name: "German Supreme Court Model",
-    role: "Supreme Court",
-    weight: 3,
-    perspective: "Civil Law (Code-Based)",
-    description: "Mistral 7B SLM grounded in the German Basic Law. Relies on strong textual interpretation and statutory intent, prioritizing human dignity.",
-    focusAreas: ["Statutory Interpretation", "Human Dignity", "Civil Rights Codes"],
-    metrics: { cases: 128, similarity: 94, winRate: 46 },
-    theme: "accent"
-  },
-  {
-    id: "India",
-    name: "Indian High Court Model",
-    role: "High Court",
-    weight: 2,
-    perspective: "Mixed System (Balanced)",
-    description: "Specialized model applying a balanced approach typical of Indian jurisprudence, weighing statutory law against diverse socio-cultural precedents.",
-    focusAreas: ["Pluralistic Interpretation", "Constitutional Bench", "Administrative Law"],
-    metrics: { cases: 89, similarity: 91, winRate: 62 },
-    theme: "destructive"
-  },
-  {
-    id: "France",
-    name: "Global Rights District Model",
-    role: "District Court",
-    weight: 1,
-    perspective: "Global Human Rights",
-    description: "Lower tier model interpreting issues strictly through international treaties without Supreme Court binding authority.",
-    focusAreas: ["Treaty Adherence", "Trial Verification", "Cross-Border"],
-    metrics: { cases: 45, similarity: 88, winRate: 31 },
-    theme: "secondary"
-  }
-];
+import { GLOBAL_COURT_REGISTRY, fetchRegistry } from '@/lib/court_registry';
 
 export default function AgentRegistryPage() {
   const router = useRouter();
@@ -67,6 +22,52 @@ export default function AgentRegistryPage() {
   const [caseTitle, setCaseTitle] = useState("");
   const [caseFacts, setCaseFacts] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [registryLoaded, setRegistryLoaded] = useState(false);
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+
+  useEffect(() => {
+    fetchRegistry().then(() => {
+      setRegistryLoaded(true);
+    });
+  }, []);
+
+  const agents = Object.entries(GLOBAL_COURT_REGISTRY).map(([id, court]) => {
+    // Determine weight based on category (just a heuristic for the simulation)
+    let weight = 1;
+    if (court.category === 'Common' || court.category === 'Civil') weight = 3;
+    if (court.category === 'Mixed') weight = 2;
+
+    // Determine theme based on category
+    let theme = "secondary";
+    if (court.category === 'Common') theme = "primary";
+    if (court.category === 'Civil') theme = "accent";
+    if (court.category === 'Islamic') theme = "destructive";
+
+    // Stabilize metrics based on manifest/registry data
+    const stability = court.simulationWeight || 75;
+    const cases = court.activeCaseCount || 1200;
+    
+    // Deterministic "realism" jitter based on ID
+    const jitter = (id.charCodeAt(0) + id.charCodeAt(1)) % 10;
+    
+    return {
+      id,
+      name: `${court.name} Model`,
+      role: "Supreme Court",
+      weight,
+      perspective: court.sys,
+      description: `A sophisticated AI jurist specialized in the ${court.sys}. Anchored in the ${court.supreme} hierarchy with local oversight from ${court.investigation || 'national authorities'}.`,
+      focusAreas: [court.sys, "Constitutional Law", "National Sovereignty"],
+      metrics: { 
+        cases: cases + jitter, 
+        similarity: Math.min(99.9, 92 + (stability / 20) + (jitter / 5)), 
+        winRate: Math.max(20, stability - 15 - (jitter / 2)) 
+      },
+      theme,
+      simulationWeight: court.simulationWeight,
+      activeCaseCount: court.activeCaseCount
+    };
+  });
 
   const toggleAgent = (id: string) => {
     const next = new Set(selectedAgents);
@@ -80,7 +81,7 @@ export default function AgentRegistryPage() {
     setIsCreating(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/simulate/start', {
+      const response = await fetch(`${API_URL}/api/simulate/start`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -217,6 +218,8 @@ export default function AgentRegistryPage() {
                         <div>
                            <div className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/60 mb-2">Computational Profile</div>
                            <p className="text-sm text-foreground/80 leading-relaxed italic line-clamp-2 title">{agent.description}</p>
+                           <div className="text-sm text-slate-400 mt-2">Simulation Weight: <span className="text-white font-mono">{agent.simulationWeight ?? 50}</span></div>
+                           <div className="text-sm text-slate-400">Active Cases: <span className="text-white font-mono">{agent.activeCaseCount ?? 0}</span></div>
                         </div>
                      </div>
                   </CardContent>

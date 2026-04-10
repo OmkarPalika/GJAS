@@ -16,6 +16,8 @@ export interface IUser {
     institution?: string;
     bio?: string;
   };
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
 }
 
 export interface IUserDocument extends IUser, Document {
@@ -70,7 +72,9 @@ const userSchema: Schema<IUserDocument> = new Schema({
     lastName: String,
     institution: String,
     bio: String
-  }
+  },
+  resetPasswordToken: String,
+  resetPasswordExpires: Date
 });
 
 // Hash password before saving
@@ -82,9 +86,14 @@ userSchema.pre('save', async function(this: IUserDocument) {
 
 // Generate auth token
 userSchema.methods.generateAuthToken = async function(this: IUserDocument) {
+  const JWT_SECRET = process.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is missing.');
+  }
+
   const token = jwt.sign(
     { _id: this._id.toString(), role: this.role },
-    process.env.JWT_SECRET || 'secret',
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
   
@@ -118,6 +127,9 @@ userSchema.methods.hasStrongPassword = function(this: IUserDocument) {
   const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
   return strongPasswordRegex.test(this.password);
 };
+
+// Indexes (email/username already indexed via unique: true)
+userSchema.index({ role: 1 });
 
 const User = mongoose.model<IUserDocument, IUserModel>('User', userSchema);
 

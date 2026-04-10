@@ -100,7 +100,7 @@ export interface DynamicEdgeCase {
 export interface CollaborativeCase {
   _id: string;
   title: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'archived';
+  status: 'open' | 'in_progress' | 'resolved' | 'archived' | 'investigation' | 'trial' | 'appellate' | 'supreme' | 'assembly' | 'executive_review' | 'complete';
   participants: string[];
   createdAt: string;
   updatedAt: string;
@@ -109,4 +109,17 @@ export interface CollaborativeCase {
   currentStep?: string;
   edgeCaseLog?: DynamicEdgeCase[];
   caseType?: string;
+  pipelines: Record<string, {
+    nodes: Record<string, {
+      status: string;
+      verdict?: { decision: string; sentenceOrRemedy?: string };
+    }>;
+    finalVerdict?: { decision: string; sentenceOrRemedy?: string };
+    executiveReview?: { status: string; reasoning?: string };
+  }>;
+  iccProceedings?: {
+    status: string;
+    reasoning?: string;
+    verdict?: { decision: string; sentenceOrRemedy?: string };
+  };
 }

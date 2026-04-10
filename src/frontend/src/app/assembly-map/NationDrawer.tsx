@@ -14,7 +14,7 @@ export function NationDrawer() {
         liveCase, liveCaseId, session,
         thinkingTicker, expandedLevels, toggleExpand,
         interventionText, setInterventionText,
-        isResolving, setIsResolving,
+        isResolving, setIsResolving
     } = useSimulation();
 
     return (
@@ -54,9 +54,23 @@ export function NationDrawer() {
 
                         {/* Pipeline DAG */}
                         <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center pb-20" onClick={e => e.stopPropagation()}>
-                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] text-center mb-8 border border-border/50 px-4 py-2 rounded-full bg-muted/20">
-                                National Adjudication Pipeline
-                            </p>
+                            <div className="flex flex-col items-center gap-2 mb-8">
+                                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] text-center border border-border/50 px-4 py-2 rounded-full bg-muted/20">
+                                    National Adjudication Pipeline
+                                </p>
+                                
+                                {liveCase?.iccProceedings?.status && (
+                                    <div className="flex flex-col items-center gap-1 animate-in zoom-in duration-500">
+                                        <div className="bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-lg flex items-center gap-2">
+                                            <Shield className="w-4 h-4 text-red-500 animate-pulse" />
+                                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Referred to ICC (Hague)</span>
+                                        </div>
+                                        <p className="text-[9px] text-muted-foreground italic max-w-[200px] text-center">
+                                            National sovereignty superseded by Rome Statute trigger.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
 
                             {(['supreme', 'appellate', 'trial', 'investigation'] as const).map((lvl, index) => {
                                 const isExpanded = expandedLevels.includes(lvl);

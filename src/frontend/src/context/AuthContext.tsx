@@ -53,7 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Call backend logout
       if (user?.accessToken) {
-        await fetch('http://localhost:5000/api/auth/logout', {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+        await fetch(`${backendUrl}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${user.accessToken}`

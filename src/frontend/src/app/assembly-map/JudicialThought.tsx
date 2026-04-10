@@ -18,17 +18,20 @@ export function JudicialThought({ thinkingLog, status, startedAt, completedAt }:
 
   useEffect(() => {
     if (status === 'deliberating' && startedAt) {
-      setIsOpen(true);
+      const timeoutId = setTimeout(() => setIsOpen(true), 0);
       const start = new Date(startedAt).getTime();
       const interval = setInterval(() => {
         const now = Date.now();
         setElapsed(((now - start) / 1000).toFixed(0) + 's');
       }, 1000);
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(timeoutId);
+        clearInterval(interval);
+      };
     } else if (status === 'complete' && startedAt && completedAt) {
       const start = new Date(startedAt).getTime();
       const end = new Date(completedAt).getTime();
-      setElapsed(((end - start) / 1000).toFixed(0) + 's');
+      setTimeout(() => setElapsed(((end - start) / 1000).toFixed(0) + 's'), 0);
     }
   }, [status, startedAt, completedAt]);
 

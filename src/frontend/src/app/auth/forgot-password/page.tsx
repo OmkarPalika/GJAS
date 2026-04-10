@@ -12,6 +12,8 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+
   const handleSubmit = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -19,18 +21,23 @@ export default function ForgotPasswordPage() {
     setMessage('');
 
     try {
-      // In a real application, this would call your backend password reset endpoint
-      console.log('Password reset request for:', email);
+      const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const data = await response.json();
 
-      setMessage('If an account exists for ' + email + ', you will receive a password reset link shortly.');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to request reset link');
+      }
+
+      setMessage(data.message || 'If an account exists, you will receive a reset link shortly.');
 
     } catch (err) {
       const error = err as Error;
       setError(error.message || 'Failed to send password reset email. Please try again.');
-      console.error('Password reset error:', err);
     } finally {
       setLoading(false);
     }

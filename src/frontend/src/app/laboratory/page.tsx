@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, ArrowLeft, Network, BarChart3, Clock, Database, Map } from 'lucide-react';
+import { useSocket } from '@/context/SocketContext';
 
 // Use a local LocalBadge if not imported from elsewhere to avoid conflicts
 function LocalBadge({ children, className, variant = "default" }: { children: React.ReactNode, className?: string, variant?: "default" | "outline" | "secondary" | "destructive" }) {
@@ -34,6 +35,7 @@ export default function VisualizePage() {
   const [networkData, setNetworkData] = useState<NetworkData | null>(null);
   const [barChartData, setBarChartData] = useState<BarChartData[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { socket, connected } = useSocket();
 
   const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
@@ -72,10 +74,45 @@ export default function VisualizePage() {
     };
 
     fetchData();
-    // Real-time updates every 5 seconds
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
   }, [activeTab, session, API_URL]);
+
+  // WebSocket Telemetry Listener
+  useEffect(() => {
+    if (!socket || !connected) return;
+
+    // Join the global telemetry feed
+    socket.emit('join-case', 'global-telemetry');
+
+    const handleUpdate = (data: Record<string, unknown> & { event?: string, country?: string, status?: string }) => {
+      console.log('[WS Telemetry] Received update:', data);
+      
+      if (data.event === 'NODE_COMPLETE' || data.event === 'PHASE_TRANSITION') {
+        setNetworkData(prev => {
+          if (!prev) return prev;
+          
+          const newNodes = prev.nodes.map(node => {
+            // Check if this node matches the country/phase being updated
+            // Node IDs in the graph look like: country-level-caseId (from simulation.ts)
+            // or country-caseId
+            const isMatch = (data.country && node.id.includes(data.country)) || (data.status && node.id.includes(data.status));
+            
+            if (isMatch) {
+              return { ...node, status: data.status || 'complete' };
+            }
+            return node;
+          });
+
+          return { ...prev, nodes: newNodes };
+        });
+      }
+    };
+
+    socket.on('telemetry-update', handleUpdate);
+
+    return () => {
+      socket.off('telemetry-update', handleUpdate);
+    };
+  }, [socket, connected]);
 
   return (
     <div className="min-h-screen bg-secondary/10 flex flex-col">

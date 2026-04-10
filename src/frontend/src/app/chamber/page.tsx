@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import io, { Socket } from 'socket.io-client';
+import { applySimulationEvent, SimulationEvent, SimulationState } from '@/lib/simulation_sync';
 import { CollaborativeMessage, CollaborativeCase } from '@/types/api';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,8 @@ function CollaboratePageContent() {
     if (!user) return;
 
     const initializeSocket = async () => {
-      const newSocket: Socket = io('http://localhost:5000', {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const newSocket: Socket = io(backendUrl, {
         withCredentials: true,
         extraHeaders: {
           'Authorization': `Bearer ${user.accessToken}`
@@ -51,8 +53,8 @@ function CollaboratePageContent() {
 
       setSocket(newSocket);
 
-      // Authentication
-      newSocket.emit('authenticate', user.id);
+      // Authentication: Send token, not userId
+      newSocket.emit('authenticate', user.accessToken);
 
       // Event handlers
       newSocket.on('auth-success', (data) => {
@@ -110,8 +112,14 @@ function CollaboratePageContent() {
         setMessages(prev => [...prev, systemMessage]);
       });
 
-      newSocket.on('case-updated', (updatedCase) => {
-        setJoinedCase(updatedCase);
+      newSocket.on('case-updated', (data) => {
+        // If it's a full case object (has _id and pipelines), replace it
+        if (data._id && data.pipelines) {
+          setJoinedCase(data);
+        } else if (data.event) {
+          // If it's a granular event, merge it into the state using the sync utility
+          setJoinedCase(prev => applySimulationEvent(prev as unknown as SimulationState, data as unknown as SimulationEvent) as unknown as CollaborativeCase);
+        }
       });
 
       newSocket.on('error', (error) => {
@@ -170,7 +178,8 @@ function CollaboratePageContent() {
     setResolvingEdgeCase(true);
     
     try {
-      const response = await fetch(`http://localhost:5000/api/simulate/resolve-edge-case/${joinedCase._id}`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${backendUrl}/api/simulate/resolve-edge-case/${joinedCase._id}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

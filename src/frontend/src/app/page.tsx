@@ -121,7 +121,7 @@ export default function Home() {
             <Link href="/archives">
               <Button size="lg" className="px-10 py-7 text-lg shadow-premium">Explore Database</Button>
             </Link>
-            <Link href="/signup">
+            <Link href="/auth/register">
               <Button size="lg" variant="outline" className="px-10 py-7 text-lg">Request Expert Access</Button>
             </Link>
           </div>

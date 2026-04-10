@@ -41,6 +41,7 @@ export interface INodeResult {
   startedAt?: Date;
   completedAt?: Date;
   thinkingLog?: string;
+  confidenceScore?: number;
 }
 
 export interface ICountryPipeline {
@@ -82,8 +83,16 @@ export interface ICase extends Document {
     status: 'pending' | 'deliberating' | 'complete' | 'failed';
     synthesisReasoning?: string;
     finalGlobalJudgement?: string;
+    confidenceScore?: number;
+    weightedMajorityPercent?: number;
+    consensusReached?: boolean;
   };
   iccProceedings?: {
+    status: 'pending' | 'deliberating' | 'complete' | 'failed';
+    verdict?: IVerdict;
+    reasoning?: string;
+  };
+  icjProceedings?: {
     status: 'pending' | 'deliberating' | 'complete' | 'failed';
     verdict?: IVerdict;
     reasoning?: string;
@@ -112,7 +121,8 @@ const NodeResultSchema = new Schema({
   dissentingAgents: [String],
   startedAt: Date,
   completedAt: Date,
-  thinkingLog: String
+  thinkingLog: String,
+  confidenceScore: Number
 }, { _id: false });
 
 const CountryPipelineSchema = new Schema({
@@ -167,9 +177,20 @@ const caseSchema: Schema = new Schema({
   globalAssembly: {
     status: { type: String, enum: ['pending', 'deliberating', 'complete', 'failed'] },
     synthesisReasoning: String,
-    finalGlobalJudgement: String
+    finalGlobalJudgement: String,
+    confidenceScore: Number,
+    weightedMajorityPercent: Number,
+    consensusReached: Boolean
   },
   iccProceedings: {
+    status: { type: String, enum: ['pending', 'deliberating', 'complete', 'failed'] },
+    verdict: {
+      decision: String,
+      sentenceOrRemedy: String
+    },
+    reasoning: String
+  },
+  icjProceedings: {
     status: { type: String, enum: ['pending', 'deliberating', 'complete', 'failed'] },
     verdict: {
       decision: String,
@@ -196,6 +217,11 @@ const caseSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
+
+// Indexes for frequent query patterns
+caseSchema.index({ status: 1 });
+caseSchema.index({ createdAt: -1 });
+caseSchema.index({ createdBy: 1, createdAt: -1 });
 
 caseSchema.pre('save', function(this: any) {
   this.updatedAt = new Date();

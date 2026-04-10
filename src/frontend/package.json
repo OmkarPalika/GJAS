@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run prebuild && next dev --turbopack",
+    "prebuild": "node -e \"require('fs').copyFileSync('../data/jurisdiction_manifest.json', './src/lib/jurisdiction_manifest.json')\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

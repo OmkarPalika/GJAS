@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,20 +27,31 @@ export default function ComparePage() {
   
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  
+  const [availableDocs, setAvailableDocs] = useState<{id: string, name: string}[]>([]);
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
-  // Hardcoded options for MVP scope
-  const availableDocs = [
-    { id: "United States", name: "United States (1789) - Common Law" },
-    { id: "France", name: "France (1958) - Civil Law" },
-    { id: "Brazil", name: "Brazil (1988) - Civil Law" },
-    { id: "South Africa", name: "South Africa (1996) - Mixed" },
-    { id: "India", name: "India (1950) - Common Law" }
-  ];
+  useEffect(() => {
+    const loadNations = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/constitutions`);
+        const data = await response.json();
+        const formatted = data.map((c: any) => ({
+          id: c.country,
+          name: `${c.country} (${c.year || 'N/A'}) - ${c.legal_system || 'General Law'}`
+        }));
+        setAvailableDocs(formatted);
+      } catch (err) {
+        console.error("Failed to load nations for comparison", err);
+      }
+    };
+    loadNations();
+  }, [API_URL]);
 
   const fetchDocument = async (countryId: string, setDoc: (doc: CompareDocument) => void, setLoading: (l: boolean) => void) => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/constitutions/${countryId}`);
+      const response = await fetch(`${API_URL}/api/constitutions/${countryId}`);
       if (response.ok) {
         const data = await response.json();
         setDoc({
@@ -62,7 +73,7 @@ export default function ComparePage() {
     setAnalysisLoading(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/rag/generate', {
+      const response = await fetch(`${API_URL}/api/rag/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

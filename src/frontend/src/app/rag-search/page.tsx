@@ -44,7 +44,8 @@ export default function RAGPage() {
     setError(null);
     setActiveTab('search');
     try {
-      const response = await fetch('http://localhost:5000/api/rag/search', {
+      const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/rag/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +69,8 @@ export default function RAGPage() {
     setError(null);
     setActiveTab('generate');
     try {
-      const response = await fetch('http://localhost:5000/api/rag/generate', {
+      const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/rag/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
