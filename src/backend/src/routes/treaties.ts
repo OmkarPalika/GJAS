@@ -110,7 +110,7 @@ router.put('/:treatyId', expertMiddleware, async (req: Request, res: Response) =
     const treaty = await Treaty.findOneAndUpdate(
       { treatyId: req.params.treatyId },
       updates,
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!treaty) {

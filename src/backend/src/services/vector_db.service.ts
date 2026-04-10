@@ -1,8 +1,32 @@
 import { ChromaClient, Collection, EmbeddingFunction } from 'chromadb';
 import * as fs from 'fs';
+import { MistralAIEmbeddings } from '@langchain/mistralai';
 
-const dummyEmbedder: EmbeddingFunction = {
-  generate: async (texts: string[]) => texts.map(() => Array(1536).fill(0))
+let _mistralEmbeddings: MistralAIEmbeddings | null = null;
+
+function getMistralEmbeddings() {
+  if (!_mistralEmbeddings) {
+    if (!process.env.MISTRAL_API_KEY) {
+      console.warn('MISTRAL_API_KEY missing from environment. Using zero-vector fallback.');
+    }
+    _mistralEmbeddings = new MistralAIEmbeddings({
+      apiKey: process.env.MISTRAL_API_KEY
+    });
+  }
+  return _mistralEmbeddings;
+}
+
+const productionEmbedder: EmbeddingFunction = {
+  generate: async (texts: string[]) => {
+    try {
+      const embeddings = getMistralEmbeddings();
+      return await embeddings.embedDocuments(texts);
+    } catch (error) {
+      console.error('Mistral embedding generation failed:', error);
+      // Return zero vectors as a fallback to prevent total system failure, but log loudly
+      return texts.map(() => Array(1536).fill(0));
+    }
+  }
 };
 
 class VectorDBService {
@@ -40,7 +64,7 @@ class VectorDBService {
         this.collection = await this.client.getOrCreateCollection({
           name: this.collectionName,
           metadata: { "hnsw:space": "cosine" },
-          embeddingFunction: dummyEmbedder
+          embeddingFunction: productionEmbedder
         });
         console.log(`Connected to ChromaDB collection: ${this.collectionName}`);
       } catch (error) {

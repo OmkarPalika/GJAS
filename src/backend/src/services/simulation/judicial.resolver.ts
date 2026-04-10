@@ -1,15 +1,12 @@
-/**
- * judicial.resolver.ts
- * Handles individual node resolution: prompt construction, LLM calls,
- * Clerk anti-hallucination verification, retry logic, and verdict persistence.
- */
 import Case, { ICase, INodeResult } from '@/models/Case.js';
 import corpusLoader from '@/services/simulation/corpus.js';
-import { GLOBAL_COURT_REGISTRY } from '@/lib/court_registry.js';
+import Registry from '@/models/Registry.js';
 import { sharedQueue, RequestQueue } from '@/services/simulation/request_queue.js';
 import type { CourtLevel, CountryCode } from '@/services/simulation.service.js';
+import { getWsServer } from '@/services/websocket.js';
+import { SIMULATION_CONFIG } from '@/config/simulation.config.js';
 
-const MISTRAL_API = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_API = SIMULATION_CONFIG.MISTRAL_API_URL;
 const MISTRAL_KEY = () => process.env.MISTRAL_API_KEY;
 
 export class JudicialResolver {
@@ -26,6 +23,9 @@ export class JudicialResolver {
     const version = this.queue.queueVersion;
     const caseDoc = await Case.findById(caseId);
     if (!caseDoc) throw new Error('Case not found');
+
+    const registry = await Registry.findOne({ countryCode: country });
+    if (!registry) throw new Error(`Registry for ${country} not found`);
 
     const pipeline = caseDoc.pipelines.get(country);
     if (!pipeline) throw new Error(`Pipeline for ${country} not initialized`);
@@ -75,11 +75,11 @@ export class JudicialResolver {
             signal: controller.signal,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MISTRAL_KEY()}` },
             body: JSON.stringify({
-              model: 'mistral-small-latest',
+              model: SIMULATION_CONFIG.MODELS.JUDICIAL,
               messages: [
                 {
                   role: 'system',
-                  content: this.getSystemPrompt(country, nodeLevel, caseDoc, nodeId) +
+                  content: this.getSystemPrompt(country, nodeLevel, caseDoc, nodeId, registry) +
                     '\n\nSTRICT REQUIREMENT: Verify your own legal logic before outputting JSON. Ensure the JSON is structurally valid.'
                 },
                 { role: 'user', content: prompt }
@@ -113,7 +113,7 @@ export class JudicialResolver {
             return this.handleRetry(caseId, country, nodeLevel, prompt, verification.critique || 'Problematic logic detected.', version, nodeId, caseDoc, legalContext);
           }
 
-          await this.saveVerdict(caseId, country, nodeLevel, resultJson);
+          await this.saveVerdict(caseId, country, nodeLevel, resultJson, registry);
           console.log(`[${new Date().toLocaleTimeString()}] [Judicial|Done] ${country} resolved in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
           return node;
         } catch (err) {
@@ -133,15 +133,15 @@ export class JudicialResolver {
             fP.nodes[nodeLevel].thinkingLog = 'Judicial Deliberation Token Acquired. Finalizing deliberation...\n\n';
             await freshCase.save();
 
-            // Monologue firing 
-            this.queue.enqueue(
-              async () => {
-                console.log(`[${new Date().toLocaleTimeString()}] [Monologue|Start] Deliberation text for ${country}...`);
-                return this.streamJudicialMonologue(caseId, country, nodeLevel, legalContext, caseDoc.facts, version);
-              },
-              undefined,
-              'bg'
-            ).catch(e => console.warn('[Monologue] Background stream error:', e));
+            // Monologue: only fire if feature flag is enabled (default: off)
+            if (SIMULATION_CONFIG.FEATURES.ENABLE_MONOLOGUE) {
+              this.queue.enqueue(
+                async () => {
+                  console.log(`[${new Date().toLocaleTimeString()}] [Monologue|Start] Deliberation text for ${country}...`);
+                  return this.runJudicialMonologue(caseId, country, nodeLevel, legalContext, caseDoc.facts, version);
+                }
+              ).catch(e => console.warn('[Monologue] Background error:', e));
+            }
           }
         }
       },
@@ -157,24 +157,27 @@ export class JudicialResolver {
     const retryPrompt = originalPrompt +
       `\n\nCRITICAL FEEDBACK FROM REVIEWER:\nYour previous attempt was rejected:\n"${critique}"\n\nRewrite your logic to fix this error.`;
 
+    const registryEntry = await Registry.findOne({ countryCode: country });
+
     const retryResponse = await this.queue.enqueue(() => fetch(MISTRAL_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MISTRAL_KEY()}` },
       body: JSON.stringify({
-        model: 'mistral-large-latest',
+        model: SIMULATION_CONFIG.MODELS.JUDICIAL,
         messages: [
-          { role: 'system', content: this.getSystemPrompt(country as CountryCode, nodeLevel as CourtLevel, caseDoc, nodeId) },
+          { role: 'system', content: this.getSystemPrompt(country as CountryCode, nodeLevel as CourtLevel, caseDoc, nodeId, registryEntry) },
           { role: 'user', content: retryPrompt }
         ],
         response_format: { type: 'json_object' }
       })
-    }));
+    }), undefined, 'legal');
+
 
     if (!retryResponse || !retryResponse.ok) return null;
     const retryData = await retryResponse.json();
     try {
       const retryJson = RequestQueue.robustJsonParse(retryData.choices[0].message.content);
-      await this.saveVerdict(caseId, country, nodeLevel, retryJson);
+      await this.saveVerdict(caseId, country, nodeLevel, retryJson, registryEntry);
     } catch (err) {
       console.error(`[Retry|Fail] Permanent failure for ${country} ${nodeLevel}.`, err);
       // Mark node as failed so orchestrator doesn't see it stuck as 'deliberating'
@@ -185,13 +188,15 @@ export class JudicialResolver {
     }
   }
 
-  async saveVerdict(caseId: string, country: string, nodeLevel: string, resultJson: any): Promise<void> {
+  async saveVerdict(caseId: string, country: string, nodeLevel: string, resultJson: any, registry?: any): Promise<void> {
+    const activeRegistry = registry || await Registry.findOne({ countryCode: country });
     const updatePayload: any = {
       [`pipelines.${country}.nodes.${nodeLevel}.status`]: 'complete',
       [`pipelines.${country}.nodes.${nodeLevel}.completedAt`]: new Date(),
       [`pipelines.${country}.nodes.${nodeLevel}.reasoning`]: resultJson.reasoning,
-      [`pipelines.${country}.nodes.${nodeLevel}.agentsInvolved`]: this.getAgentsForNode(country as CountryCode, nodeLevel as CourtLevel),
+      [`pipelines.${country}.nodes.${nodeLevel}.agentsInvolved`]: this.getAgentsForNode(country as CountryCode, nodeLevel as CourtLevel, activeRegistry),
       [`pipelines.${country}.nodes.${nodeLevel}.legalReferences`]: resultJson.legalReferences || [],
+      [`pipelines.${country}.nodes.${nodeLevel}.confidenceScore`]: typeof resultJson.confidenceScore === 'number' ? resultJson.confidenceScore : 5,
       [`pipelines.${country}.nodes.${nodeLevel}.verdict`]: {
         decision: resultJson.decision || 'Undecided',
         sentenceOrRemedy: resultJson.sentenceOrRemedy,
@@ -203,6 +208,8 @@ export class JudicialResolver {
       updatePayload[`pipelines.${country}.finalVerdict`] = updatePayload[`pipelines.${country}.nodes.${nodeLevel}.verdict`];
     }
 
+    const updateQuery: any = { $set: updatePayload };
+
     // Anomaly detection — AI-driven via LLM response
     const VALID_ANOMALY_TYPES = [
       'LAWYER_WITHDRAWAL', 'HOSTILE_WITNESS', 'NEW_EVIDENCE', 
@@ -210,36 +217,40 @@ export class JudicialResolver {
       'DISCOVERY_REQUEST', 'GLOBAL_ESCALATION', 'JURISDICTIONAL_VOID',
       'DATA_SOVEREIGNTY_BLOCK', 'SOVEREIGN_IMMUNITY', 'EXTRATERRITORIAL_OVERREACH'
     ];
+
     if (resultJson.anomaly_detected === true && resultJson.anomaly_type) {
-      const caseDoc = await Case.findById(caseId);
-      if (caseDoc) {
+      const isTypeValid = VALID_ANOMALY_TYPES.includes(resultJson.anomaly_type);
+      if (isTypeValid) {
         const description = resultJson.anomaly_description || this.getEdgeCaseDescription(resultJson.anomaly_type);
-        // Sanitize: only push if type is in the valid schema enum; otherwise treat as a standard resolution
-        const safeType = VALID_ANOMALY_TYPES.includes(resultJson.anomaly_type)
-          ? resultJson.anomaly_type
-          : null;
-        if (safeType) {
-          caseDoc.edgeCaseLog.push({
+        updateQuery.$push = {
+          edgeCaseLog: {
             nodeId: `${country}-${nodeLevel}`,
-            type: safeType,
+            type: resultJson.anomaly_type,
             description,
             resolved: false,
             timestamp: new Date()
-          });
-          updatePayload[`pipelines.${country}.nodes.${nodeLevel}.status`] = 'edge_case';
-          await caseDoc.save();
-        } else {
-          console.warn(`[EdgeCase] Ignoring invalid anomaly_type '${resultJson.anomaly_type}' — not in schema enum.`);
-        }
-      }
-    } else {
-      // Stochastic dissent (20% chance on complete nodes)
-      if (Math.random() < 0.20) {
-        // Dissent is generated asynchronously and merged in if available
+          }
+        };
+        updateQuery.$set[`pipelines.${country}.nodes.${nodeLevel}.status`] = 'edge_case';
+      } else {
+        console.warn(`[EdgeCase] Ignoring invalid anomaly_type '${resultJson.anomaly_type}' — not in schema enum.`);
       }
     }
 
-    await Case.updateOne({ _id: caseId }, { $set: updatePayload });
+    await Case.updateOne({ _id: caseId }, updateQuery);
+
+    // Broadcast node completion via WebSocket
+    try {
+      getWsServer().broadcastCaseUpdate(caseId, {
+        event: 'NODE_COMPLETE',
+        country,
+        nodeLevel,
+        verdict: updatePayload[`pipelines.${country}.nodes.${nodeLevel}.verdict`],
+        timestamp: new Date()
+      });
+    } catch (wsErr) {
+      console.warn('[WS] Node broadcast failed:', wsErr);
+    }
   }
 
   // --- Clerk Verification ---
@@ -260,28 +271,32 @@ Criterion 3: No Hallucination — Did the judge invent legal doctrines or statut
 
 Output strictly JSON: { "valid": true/false, "critique": "If false, explain the exactly what was hallucinated or contradictory." }`;
 
-    const response = await this.queue.enqueue(() => fetch(MISTRAL_API, {
+    const verificationResponse = await this.queue.enqueue(() => fetch(MISTRAL_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MISTRAL_KEY()}` },
       body: JSON.stringify({
-        model: 'mistral-small-latest',
-        messages: [{ role: 'user', content: prompt }],
+        model: SIMULATION_CONFIG.MODELS.CLERK,
+        messages: [
+          { role: 'system', content: 'You are a meticulous Judicial Clerk.' },
+          { role: 'user', content: prompt }
+        ],
         response_format: { type: 'json_object' }
       })
-    }));
+    }), undefined, 'util');
 
     try {
-      if (!response) return { valid: true };
-      const data = await response.json();
+      if (!verificationResponse || !verificationResponse.ok) return { valid: true };
+      const data = await verificationResponse.json();
       return JSON.parse(data.choices[0].message.content);
     } catch {
       return { valid: true }; // Fail-open: don't hard-block pipeline on clerk parse failure
     }
   }
 
-  // --- Monologue Streaming ---
+  // --- Monologue (non-streaming, single call) ---
+  // Only runs when SIMULATION_CONFIG.FEATURES.ENABLE_MONOLOGUE === true
 
-  async streamJudicialMonologue(
+  async runJudicialMonologue(
     caseId: string,
     country: CountryCode,
     nodeLevel: CourtLevel,
@@ -289,6 +304,8 @@ Output strictly JSON: { "valid": true/false, "critique": "If false, explain the 
     facts: string,
     version: number
   ): Promise<string> {
+    if (version !== this.queue.queueVersion) return '';
+
     const prompt = `You are a Senior Judicial Scholar. Think through this case at the ${nodeLevel} stage in ${country}.
 Case Facts: ${facts}
 Legal Context: ${context}
@@ -302,67 +319,21 @@ Structure your thoughts as a professional courtroom internal monologue.`;
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MISTRAL_KEY()}` },
       body: JSON.stringify({
         model: 'mistral-small-latest',
-        messages: [{ role: 'user', content: prompt }],
-        stream: true
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
-    if (!response || !response.body) return 'Deliberation failed.';
+    if (!response || !response.ok) return 'Deliberation unavailable.';
     if (version !== this.queue.queueVersion) return '';
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    
-    // FETCH EXISTING LOG TO PREVENT TRUNCATION
-    const initialCase = await Case.findById(caseId);
-    let monologue = initialCase?.pipelines?.get(country)?.nodes[nodeLevel]?.thinkingLog || '';
-    
-    let lastUpdate = Date.now();
-    let lineBuffer = '';
+    const data = await response.json();
+    const monologue = data?.choices?.[0]?.message?.content || '';
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (version !== this.queue.queueVersion) { reader.cancel(); return ''; }
-
-        const chunk = decoder.decode(value, { stream: true });
-        lineBuffer += chunk;
-
-        const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop() || ''; // Keep the last partial line in buffer
-
-        let contentAdded = false;
-        for (const line of lines) {
-          if (line.trim() === 'data: [DONE]') break;
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              const content = data.choices[0].delta?.content || '';
-              if (content) {
-                monologue += content;
-                contentAdded = true;
-              }
-            } catch { /* skip partial JSON */ }
-          }
-        }
-
-        if (contentAdded && Date.now() - lastUpdate > 1000) {
-          await Case.updateOne(
-            { _id: caseId },
-            { $set: { [`pipelines.${country}.nodes.${nodeLevel}.thinkingLog`]: monologue } }
-          );
-          lastUpdate = Date.now();
-        }
-      }
-
-      // Final persistent flush
+    if (monologue) {
       await Case.updateOne(
         { _id: caseId },
         { $set: { [`pipelines.${country}.nodes.${nodeLevel}.thinkingLog`]: monologue } }
       );
-    } finally {
-      reader.releaseLock();
     }
 
     return monologue;
@@ -382,8 +353,11 @@ You must respond with a strict JSON object mapping these keys exactly:
   "majorityRatio": "Optional 5-4, Unanimous, etc.",
   "anomaly_detected": false,
   "anomaly_type": null,
-  "anomaly_description": null
+  "anomaly_description": null,
+  "confidenceScore": 8
 }
+
+Assign a "confidenceScore" (Number, 1-10) reflecting how strongly the legal context supports this decision.
 
 CRITICAL ANOMALY DETECTION INSTRUCTIONS:
 Set "anomaly_detected": true ONLY if the case facts reveal a REAL, SPECIFIC issue such as:
@@ -400,8 +374,7 @@ ${history ? `Judicial History:\n${history}\n\nTask: Evaluate the case at the ${l
     `;
   }
 
-  getSystemPrompt(country: CountryCode, level: CourtLevel, caseDoc: ICase, nodeId: string): string {
-    const registry = GLOBAL_COURT_REGISTRY[country];
+  getSystemPrompt(country: CountryCode, level: CourtLevel, caseDoc: ICase, nodeId: string, registry: any): string {
     const systemType = registry?.sys || 'General Legal System';
     const investigationAgency = registry?.investigation || 'Local Investigating Authority';
 
@@ -412,7 +385,7 @@ ${history ? `Judicial History:\n${history}\n\nTask: Evaluate the case at the ${l
     if (level === 'investigation') {
       role = isAgencyActive ? `Special Federal Agent from the ${investigationAgency}` : `Investigating Official (${investigationAgency})`;
     } else {
-      const courtName = registry?.[level] || `${level.charAt(0).toUpperCase() + level.slice(1)} Court`;
+      const courtName = (registry as any)[level] || `${level.charAt(0).toUpperCase() + level.slice(1)} Court`;
       role = `Judge in the ${courtName}`;
     }
 
@@ -425,9 +398,8 @@ ${level === 'supreme' ? 'Focus purely on Constitutional validity and fundamental
 CRITICAL VISUAL CONSTRAINT: For the "reasoning" field, provide EXACTLY 3 lines. Required for our global judicial dashboard.`;
   }
 
-  getAgentsForNode(country: CountryCode, level: CourtLevel): string[] {
-    const registry = GLOBAL_COURT_REGISTRY[country];
-    const courtName = registry?.[level] || `${level.charAt(0).toUpperCase() + level.slice(1)} Court`;
+  getAgentsForNode(country: CountryCode, level: CourtLevel, registry: any): string[] {
+    const courtName = (registry as any)[level] || `${level.charAt(0).toUpperCase() + level.slice(1)} Court`;
     if (level === 'supreme') return [courtName];
     if (level === 'trial' && country === 'USA') return ['Judge', 'Jury'];
     return [courtName];

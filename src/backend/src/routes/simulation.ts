@@ -3,7 +3,7 @@ import Case, { ICountryPipeline } from '@/models/Case.js';
 import simulationService from '@/services/simulation.service.js';
 import { authMiddleware, AuthRequest } from '@/middleware/auth.js';
 import mongoose from 'mongoose';
-import { GLOBAL_COURT_REGISTRY } from '../lib/court_registry.js';
+import Registry from '@/models/Registry.js';
 
 
 const router = express.Router();
@@ -35,9 +35,12 @@ router.post('/start', authMiddleware, async (req: AuthRequest, res: Response) =>
 
     const pipelineMap = new Map<string, ICountryPipeline>();
     
-    // Setup legal systems mapping using Global Registry
+    // Setup legal systems mapping using Dynamic Registry
+    const registries = await Registry.find({ countryCode: { $in: countries } });
+    const registryMap = new Map(registries.map(r => [r.countryCode, r]));
+
     for (const c of countries) {
-      const registryEntry = GLOBAL_COURT_REGISTRY[c];
+      const registryEntry = registryMap.get(c);
       pipelineMap.set(c, {
         country: c,
         legalSystem: registryEntry?.sys || 'Unknown',
@@ -127,7 +130,9 @@ router.post('/resolve-edge-case/:caseId', authMiddleware, async (req: AuthReques
 // 4. Telemetry - Global DAG View
 router.get('/telemetry/nodes', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const cases = await Case.find().limit(10); // Last 10 simulations for graph density
+    const cases = await Case.find()
+      .select('_id title status pipelines')
+      .limit(10); // Last 10 simulations for graph density
     const nodes: any[] = [];
     const links: any[] = [];
 
@@ -179,7 +184,7 @@ router.get('/telemetry/nodes', authMiddleware, async (req: AuthRequest, res: Res
 // 5. Telemetry - Legal System Stats
 router.get('/telemetry/stats', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const cases = await Case.find();
+    const cases = await Case.find().select('pipelines');
     const stats: Record<string, number> = {};
 
     cases.forEach(c => {
